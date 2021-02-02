@@ -512,11 +512,6 @@ static SDValue getTargetNode(GlobalAddressSDNode *N, SDLoc DL, EVT Ty,
   return DAG.getTargetGlobalAddress(N->getGlobal(), DL, Ty, 0, Flags);
 }
 
-static SDValue getTargetNode(ExternalSymbolSDNode *N, SDLoc DL, EVT Ty,
-                             SelectionDAG &DAG, unsigned Flags) {
-  return DAG.getTargetExternalSymbol(N->getSymbol(), Ty, Flags);
-}
-
 static SDValue getTargetNode(BlockAddressSDNode *N, SDLoc DL, EVT Ty,
                              SelectionDAG &DAG, unsigned Flags) {
   return DAG.getTargetBlockAddress(N->getBlockAddress(), Ty, N->getOffset(),
@@ -2714,32 +2709,32 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
   // If the callee is a GlobalAddress/ExternalSymbol node, turn it into a
   // TargetGlobalAddress/TargetExternalSymbol node so that legalize won't
   // split it and then direct call can be matched by PseudoCALL.
-  // TODO: Support purecap PLT
   if (GlobalAddressSDNode *S = dyn_cast<GlobalAddressSDNode>(Callee)) {
     const GlobalValue *GV = S->getGlobal();
-    bool IsLocal =
-        getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV);
+
+    unsigned OpFlags;
     if (RISCVABI::isCheriPureCapABI(Subtarget.getTargetABI())) {
-      // FIXME: we can't set IsLocal yet since we don't handle PLTs yet
-      IsLocal = false;
-      Callee = getAddr(S, Callee.getValueType(), DAG, IsLocal,
-                       /*CanDeriveFromPcc=*/true);
+      OpFlags = RISCVII::MO_CCALL;
     } else {
-      unsigned OpFlags = IsLocal ? RISCVII::MO_CALL : RISCVII::MO_PLT;
-      Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
+      OpFlags = RISCVII::MO_CALL;
+      if (!getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV))
+        OpFlags = RISCVII::MO_PLT;
     }
+
+    Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
   } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
-    bool IsLocal = getTargetMachine().shouldAssumeDSOLocal(
-        *MF.getFunction().getParent(), nullptr);
+    unsigned OpFlags;
+
     if (RISCVABI::isCheriPureCapABI(Subtarget.getTargetABI())) {
-      // FIXME: we can't set IsLocal yet since we don't handle PLTs yet
-      IsLocal = false;
-      Callee = getAddr(S, Callee.getValueType(), DAG, IsLocal,
-                       /*CanDeriveFromPcc=*/true);
+      OpFlags = RISCVII::MO_CCALL;
     } else {
-      unsigned OpFlags = IsLocal ? RISCVII::MO_CALL : RISCVII::MO_PLT;
-      Callee = DAG.getTargetExternalFunctionSymbol(S->getSymbol(), OpFlags);
+      OpFlags = RISCVII::MO_CALL;
+      if (!getTargetMachine().shouldAssumeDSOLocal(*MF.getFunction().getParent(),
+                                                   nullptr))
+        OpFlags = RISCVII::MO_PLT;
     }
+
+    Callee = DAG.getTargetExternalFunctionSymbol(S->getSymbol(), OpFlags);
   }
 
   // The first call operand is the chain and the second is the target address.

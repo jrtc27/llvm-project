@@ -14,10 +14,7 @@ define i32 @static_alloca() nounwind {
 ; RV32IXCHERI-NEXT:    addi a0, zero, 4
 ; RV32IXCHERI-NEXT:    cincoffset ca1, csp, 4
 ; RV32IXCHERI-NEXT:    csetbounds ca0, ca1, a0
-; RV32IXCHERI-NEXT:  .LBB0_1: # Label of block must be emitted
-; RV32IXCHERI-NEXT:    auipcc ca1, %captab_pcrel_hi(use_arg)
-; RV32IXCHERI-NEXT:    clc ca1, %pcrel_lo(.LBB0_1)(ca1)
-; RV32IXCHERI-NEXT:    cjalr ca1
+; RV32IXCHERI-NEXT:    ccall use_arg
 ; RV32IXCHERI-NEXT:    clc cra, 8(csp)
 ; RV32IXCHERI-NEXT:    cincoffset csp, csp, 16
 ; RV32IXCHERI-NEXT:    cret
@@ -29,10 +26,7 @@ define i32 @static_alloca() nounwind {
 ; RV64IXCHERI-NEXT:    addi a0, zero, 4
 ; RV64IXCHERI-NEXT:    cincoffset ca1, csp, 12
 ; RV64IXCHERI-NEXT:    csetbounds ca0, ca1, a0
-; RV64IXCHERI-NEXT:  .LBB0_1: # Label of block must be emitted
-; RV64IXCHERI-NEXT:    auipcc ca1, %captab_pcrel_hi(use_arg)
-; RV64IXCHERI-NEXT:    clc ca1, %pcrel_lo(.LBB0_1)(ca1)
-; RV64IXCHERI-NEXT:    cjalr ca1
+; RV64IXCHERI-NEXT:    ccall use_arg
 ; RV64IXCHERI-NEXT:    clc cra, 16(csp)
 ; RV64IXCHERI-NEXT:    cincoffset csp, csp, 32
 ; RV64IXCHERI-NEXT:    cret
@@ -59,10 +53,7 @@ define i32 @dynamic_alloca(iXLEN %x) nounwind {
 ; RV32IXCHERI-NEXT:    csetbounds ca2, ca1, a2
 ; RV32IXCHERI-NEXT:    cmove csp, ca1
 ; RV32IXCHERI-NEXT:    csetbounds ca0, ca2, a0
-; RV32IXCHERI-NEXT:  .LBB1_1: # Label of block must be emitted
-; RV32IXCHERI-NEXT:    auipcc ca1, %captab_pcrel_hi(use_arg)
-; RV32IXCHERI-NEXT:    clc ca1, %pcrel_lo(.LBB1_1)(ca1)
-; RV32IXCHERI-NEXT:    cjalr ca1
+; RV32IXCHERI-NEXT:    ccall use_arg
 ; RV32IXCHERI-NEXT:    cincoffset csp, cs0, -16
 ; RV32IXCHERI-NEXT:    clc cs0, 0(csp)
 ; RV32IXCHERI-NEXT:    clc cra, 8(csp)
@@ -87,10 +78,7 @@ define i32 @dynamic_alloca(iXLEN %x) nounwind {
 ; RV64IXCHERI-NEXT:    csetbounds ca2, ca1, a3
 ; RV64IXCHERI-NEXT:    cmove csp, ca1
 ; RV64IXCHERI-NEXT:    csetbounds ca0, ca2, a0
-; RV64IXCHERI-NEXT:  .LBB1_1: # Label of block must be emitted
-; RV64IXCHERI-NEXT:    auipcc ca1, %captab_pcrel_hi(use_arg)
-; RV64IXCHERI-NEXT:    clc ca1, %pcrel_lo(.LBB1_1)(ca1)
-; RV64IXCHERI-NEXT:    cjalr ca1
+; RV64IXCHERI-NEXT:    ccall use_arg
 ; RV64IXCHERI-NEXT:    cincoffset csp, cs0, -32
 ; RV64IXCHERI-NEXT:    clc cs0, 0(csp)
 ; RV64IXCHERI-NEXT:    clc cra, 16(csp)
