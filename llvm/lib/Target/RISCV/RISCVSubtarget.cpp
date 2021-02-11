@@ -27,6 +27,11 @@ using namespace llvm;
 #define GET_SUBTARGETINFO_CTOR
 #include "RISCVGenSubtargetInfo.inc"
 
+static cl::opt<bool>
+    CheriRVC("riscv-cheri-rvc",
+             cl::desc("Enable CHERI compressed instructions"),
+             cl::init(false), cl::Hidden);
+
 void RISCVSubtarget::anchor() {}
 
 RISCVSubtarget &RISCVSubtarget::initializeSubtargetDependencies(
@@ -37,6 +42,7 @@ RISCVSubtarget &RISCVSubtarget::initializeSubtargetDependencies(
   if (CPUName.empty())
     CPUName = Is64Bit ? "generic-rv64" : "generic-rv32";
   ParseSubtargetFeatures(CPUName, FS);
+  EnableCheriRVCInstrs = CheriRVC;
   if (Is64Bit) {
     XLenVT = MVT::i64;
     XLen = 64;
