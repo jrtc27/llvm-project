@@ -189,6 +189,8 @@ public:
   uint64_t getGotPltOffset() const;
   uint64_t getGotPltVA() const;
   uint64_t getPltVA() const;
+  uint64_t getCapTableVA(InputSectionBase *isec, uint64_t offset) const;
+  uint64_t getCapTableOffset(InputSectionBase *isec, uint64_t offset) const;
   uint64_t getSize() const;
   OutputSection *getOutputSection() const;
 
