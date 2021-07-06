@@ -2628,6 +2628,11 @@ def ffinite_loops: Flag<["-"],  "ffinite-loops">, Group<f_Group>,
   HelpText<"Assume all loops are finite.">, Flags<[CC1Option]>;
 def fno_finite_loops: Flag<["-"], "fno-finite-loops">, Group<f_Group>,
   HelpText<"Do not assume that any loop is finite.">, Flags<[CC1Option]>;
+defm always_mem2reg : BoolFOption<"always-mem2reg",
+  CodeGenOpts<"AlwaysMem2Reg">, DefaultFalse,
+  PosFlag<SetTrue, [], "Always run mem2reg regardless of optimisation level">,
+  NegFlag<SetFalse, [], "Run mem2reg based on optimisation level">,
+  BothFlags<[CC1Option]>>;
 
 def ftrigraphs : Flag<["-"], "ftrigraphs">, Group<f_Group>,
   HelpText<"Process trigraph sequences">, Flags<[CC1Option]>;

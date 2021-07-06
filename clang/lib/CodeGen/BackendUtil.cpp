@@ -682,6 +682,7 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
   PMBuilder.CallGraphProfile = !CodeGenOpts.DisableIntegratedAS;
 
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
+  PMBuilder.AlwaysMem2Reg = CodeGenOpts.AlwaysMem2Reg;
   // Loop interleaving in the loop vectorizer has historically been set to be
   // enabled when loop unrolling is enabled.
   PMBuilder.LoopsInterleaved = CodeGenOpts.UnrollLoops;
@@ -1256,6 +1257,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   PTO.LoopInterleaving = CodeGenOpts.UnrollLoops;
   PTO.LoopVectorization = CodeGenOpts.VectorizeLoop;
   PTO.SLPVectorization = CodeGenOpts.VectorizeSLP;
+  PTO.AlwaysMem2Reg = CodeGenOpts.AlwaysMem2Reg;
   PTO.MergeFunctions = CodeGenOpts.MergeFunctions;
   // Only enable CGProfilePass when using integrated assembler, since
   // non-integrated assemblers don't recognize .cgprofile section.

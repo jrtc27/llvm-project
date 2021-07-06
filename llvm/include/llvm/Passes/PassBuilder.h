@@ -107,6 +107,10 @@ public:
   /// is that of the flag: `-forget-scev-loop-unroll`.
   bool ForgetAllSCEVInLoopUnroll;
 
+  /// Tuning option to always run mem2reg regardless of the optimisation level.
+  /// Its default value is false.
+  bool AlwaysMem2Reg;
+
   /// Tuning option to enable/disable coroutine intrinsic lowering. Its default
   /// value is false. Frontends such as Clang may enable this conditionally. For
   /// example, Clang enables this option if the flags `-std=c++2a` or above, or

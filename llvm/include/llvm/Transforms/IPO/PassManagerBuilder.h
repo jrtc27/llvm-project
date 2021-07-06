@@ -156,6 +156,7 @@ public:
 
   bool DisableTailCalls;
   bool DisableUnrollLoops;
+  bool AlwaysMem2Reg;
   bool CallGraphProfile;
   bool SLPVectorize;
   bool LoopVectorize;

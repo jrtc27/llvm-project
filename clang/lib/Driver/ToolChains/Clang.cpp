@@ -5835,6 +5835,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_fwritable_strings);
   Args.AddLastArg(CmdArgs, options::OPT_funroll_loops,
                   options::OPT_fno_unroll_loops);
+  Args.AddLastArg(CmdArgs, options::OPT_falways_mem2reg,
+                  options::OPT_fno_always_mem2reg);
 
   Args.AddLastArg(CmdArgs, options::OPT_pthread);
 

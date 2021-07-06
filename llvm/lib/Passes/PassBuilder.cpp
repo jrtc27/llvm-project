@@ -283,6 +283,7 @@ PipelineTuningOptions::PipelineTuningOptions() {
   SLPVectorization = false;
   LoopUnrolling = true;
   ForgetAllSCEVInLoopUnroll = ForgetSCEVInLoopUnroll;
+  AlwaysMem2Reg = false;
   Coroutines = false;
   LicmMssaOptCap = SetLicmMssaOptCap;
   LicmMssaNoAccForPromotionCap = SetLicmMssaNoAccForPromotionCap;
@@ -1930,6 +1931,9 @@ ModulePassManager PassBuilder::buildO0DefaultPipeline(OptimizationLevel Level,
   // caused by multithreaded coroutines.
   MPM.addPass(AlwaysInlinerPass(
       /*InsertLifetimeIntrinsics=*/PTO.Coroutines));
+
+  if (PTO.AlwaysMem2Reg)
+    MPM.addPass(createModuleToFunctionPassAdaptor(PromotePass()));
 
   if (PTO.MergeFunctions)
     MPM.addPass(MergeFunctionsPass());

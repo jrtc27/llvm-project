@@ -187,6 +187,7 @@ PassManagerBuilder::PassManagerBuilder() {
     LibraryInfo = nullptr;
     Inliner = nullptr;
     DisableUnrollLoops = false;
+    AlwaysMem2Reg = false;
     SLPVectorize = false;
     LoopVectorize = true;
     LoopsInterleaved = true;
@@ -658,8 +659,11 @@ void PassManagerBuilder::populateModulePassManager(
   MPM.add(createForceFunctionAttrsLegacyPass());
 
   // If all optimizations are disabled, just run the always-inline pass and,
-  // if enabled, the function merging pass.
+  // if enabled, the mem2reg and function merging passes.
   if (OptLevel == 0) {
+    if (AlwaysMem2Reg)
+      MPM.add(createPromoteMemoryToRegisterPass());
+
     addPGOInstrPasses(MPM);
     if (Inliner) {
       MPM.add(Inliner);
