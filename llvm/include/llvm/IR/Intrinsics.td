@@ -185,7 +185,7 @@ class LLVMAnyPointerType<LLVMType elty>
 }
 
 class LLVMFatPointerType<LLVMType elty>
-  : LLVMType<iFATPTRAny>{
+  : LLVMType<iFATPTR>{
   LLVMType ElTy = elty;
 }
 

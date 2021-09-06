@@ -250,11 +250,6 @@ enum IIT_Info {
   IIT_STRUCT9 = 49,
   IIT_V256 = 50,
   IIT_AMX  = 51,
-  IIT_IFATPTR64 = 52,
-  IIT_IFATPTR128 = 53,
-  IIT_IFATPTR256 = 54,
-  IIT_IFATPTR512 = 55,
-  IIT_IFATPTRAny = 56,
 };
 
 static void EncodeFixedValueType(MVT::SimpleValueType VT,
@@ -274,11 +269,14 @@ static void EncodeFixedValueType(MVT::SimpleValueType VT,
 
   switch (VT) {
   default: PrintFatalError("unhandled MVT in intrinsic!");
-  case MVT::iFATPTR64: return Sig.push_back(IIT_IFATPTR64);
-  case MVT::iFATPTR128: return Sig.push_back(IIT_IFATPTR128);
-  case MVT::iFATPTR256: return Sig.push_back(IIT_IFATPTR256);
-  case MVT::iFATPTR512: return Sig.push_back(IIT_IFATPTR512);
-  case MVT::iFATPTRAny: return Sig.push_back(IIT_IFATPTRAny);
+  case MVT::iFATPTR64:
+  case MVT::iFATPTR128:
+  case MVT::iFATPTR256:
+  case MVT::iFATPTR512:
+    Sig.push_back(IIT_ANYPTR);
+    // XXX: Hard-coded AS
+    Sig.push_back(200);
+    return;
   case MVT::f16: return Sig.push_back(IIT_F16);
   case MVT::bf16: return Sig.push_back(IIT_BF16);
   case MVT::f32: return Sig.push_back(IIT_F32);
@@ -382,19 +380,13 @@ static void EncodeFixedType(Record *R, std::vector<unsigned char> &ArgCodes,
     return EncodeFixedType(R->getValueAsDef("ElTy"), ArgCodes, NextArgCode, Sig,
                            Mapping);
   }
+  case MVT::iFATPTR:
   case MVT::iFATPTR64:
   case MVT::iFATPTR128:
   case MVT::iFATPTR256:
-  case MVT::iFATPTR512:
-  case MVT::iFATPTRAny: {
-    switch (VT) {
-    default: llvm_unreachable("VT already checked!");
-    case MVT::iFATPTR64: Sig.push_back(IIT_IFATPTR64); break;
-    case MVT::iFATPTR128: Sig.push_back(IIT_IFATPTR128); break;
-    case MVT::iFATPTR256: Sig.push_back(IIT_IFATPTR256); break;
-    case MVT::iFATPTR512: Sig.push_back(IIT_IFATPTR512); break;
-    case MVT::iFATPTRAny: Sig.push_back(IIT_IFATPTRAny); break;
-    }
+  case MVT::iFATPTR512: {
+    // XXX: Hard-coded AS
+    Sig.push_back(IIT_ANYPTR);
     Sig.push_back(200);
     return EncodeFixedType(R->getValueAsDef("ElTy"), ArgCodes, NextArgCode, Sig,
                            Mapping);

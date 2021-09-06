@@ -254,10 +254,8 @@ namespace llvm {
       iFATPTR128 = 167, // 128-bit fat pointer type
       iFATPTR256 = 168, // 256-bit fat pointer type
       iFATPTR512 = 169, // 512-bit fat pointer type
-      iFATPTRAny = 170, // Generic fat pointer type (must be legalised to a
-      // sized  version)
-      FIRST_FAT_POINTER = iFATPTR64,
-      LAST_FAT_POINTER = iFATPTRAny,
+      FIRST_FAT_POINTER_VALUETYPE = iFATPTR64,
+      LAST_FAT_POINTER_VALUETYPE = iFATPTR512,
 
       FIRST_VALUETYPE =  1,   // This is always the beginning of the list.
       LAST_VALUETYPE = 171,   // This always remains at the end of the list.
@@ -267,15 +265,21 @@ namespace llvm {
       // This value must be a multiple of 32.
       MAX_ALLOWED_VALUETYPE = 192,
 
+      // A fat pointer value the size of the fat pointer of the current
+      // target.  This should only be used internal to tblgen!
+      iFATPTR        = 247,
+
       // A value of type llvm::TokenTy
       token          = 248,
 
       // This is MDNode or MDString.
       Metadata       = 249,
 
-      // An int value the size of the pointer of the current
-      // target to any address space. This must only be used internal to
-      // tblgen. Other than for overloading, we treat iPTRAny the same as iPTR.
+      // An int or fat pointer value the size of the pointer or fat pointer of
+      // the current target (no more than one of each supported, together they
+      // must cover any address space). This must only be used internal to
+      // tblgen. Other than for overloading, we treat iPTRAny the same as
+      // {iPTR, iFATPTR}.
       iPTRAny        = 250,
 
       // A vector with any length and element size. This is used
@@ -342,8 +346,8 @@ namespace llvm {
 
     /// Return true if this is a fat pointer type.
     bool isFatPointer() const {
-      return (SimpleTy >= MVT::FIRST_FAT_POINTER) &&
-             (SimpleTy <= MVT::LAST_FAT_POINTER);
+      return (SimpleTy >= MVT::FIRST_FAT_POINTER_VALUETYPE) &&
+             (SimpleTy <= MVT::LAST_FAT_POINTER_VALUETYPE);
     }
 
     /// Return true if this is an integer, not including vectors.
@@ -441,7 +445,7 @@ namespace llvm {
     bool isOverloaded() const {
       return (SimpleTy == MVT::Any || SimpleTy == MVT::iAny ||
               SimpleTy == MVT::fAny || SimpleTy == MVT::vAny ||
-              SimpleTy == MVT::iPTRAny || SimpleTy == MVT::iFATPTRAny);
+              SimpleTy == MVT::iPTRAny);
     }
 
     /// Return a vector with the same number of elements as this vector, but
@@ -828,12 +832,12 @@ namespace llvm {
       case Other:
         llvm_unreachable("Value type is non-standard value, Other.");
       case iPTR:
+      case iFATPTR:
         llvm_unreachable("Value type size is target-dependent. Ask TLI.");
       case iFATPTR64: return TypeSize::Fixed(64);
       case iFATPTR128: return TypeSize::Fixed(128);
       case iFATPTR256: return TypeSize::Fixed(256);
       case iFATPTR512: return TypeSize::Fixed(512);
-      case iFATPTRAny:
       case iPTRAny:
       case iAny:
       case fAny:
@@ -1391,6 +1395,12 @@ namespace llvm {
     static mvt_range integer_valuetypes() {
       return mvt_range(MVT::FIRST_INTEGER_VALUETYPE,
                        (MVT::SimpleValueType)(MVT::LAST_INTEGER_VALUETYPE + 1));
+    }
+
+    static mvt_range fat_pointer_valuetypes() {
+      return mvt_range(
+               MVT::FIRST_FAT_POINTER_VALUETYPE,
+               (MVT::SimpleValueType)(MVT::LAST_FAT_POINTER_VALUETYPE + 1));
     }
 
     static mvt_range fp_valuetypes() {

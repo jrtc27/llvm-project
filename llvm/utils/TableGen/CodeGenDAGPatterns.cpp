@@ -34,6 +34,15 @@ using namespace llvm;
 
 #define DEBUG_TYPE "dag-patterns"
 
+static inline bool isInteger(MVT VT) {
+  return VT.isInteger();
+}
+static inline bool isPointer(MVT VT) {
+  return VT == MVT::iPTR;
+}
+static inline bool isFatPointer(MVT VT) {
+  return VT.isFatPointer() || VT == MVT::iFATPTR;
+}
 static inline bool isIntegerOrPtr(MVT VT) {
   return VT.isInteger() || VT == MVT::iPTR;
 }
@@ -259,6 +268,10 @@ namespace llvm {
     T.writeToStream(OS);
     return OS;
   }
+  raw_ostream &operator<<(raw_ostream &OS, const TreePattern &T) {
+    T.print(OS);
+    return OS;
+  }
 }
 
 LLVM_DUMP_METHOD
@@ -267,61 +280,102 @@ void TypeSetByHwMode::dump() const {
 }
 
 bool TypeSetByHwMode::intersect(SetType &Out, const SetType &In) {
-  bool OutP = Out.count(MVT::iPTR), InP = In.count(MVT::iPTR);
   auto Int = [&In](MVT T) -> bool { return !In.count(T); };
+  bool Changed = false;
 
-  if (OutP == InP)
-    return berase_if(Out, Int);
+  LLVM_DEBUG({
+    errs() << "Intersecting: ";
+    writeToStream(Out, errs());
+    errs() << " and ";
+    writeToStream(In, errs());
+    errs() << "\n";
+  });
 
-  // Compute the intersection of scalars separately to account for only
-  // one set containing iPTR.
-  // The intersection of iPTR with a set of integer scalar types that does not
-  // include iPTR will result in the most specific scalar type:
-  // - iPTR is more specific than any set with two elements or more
-  // - iPTR is less specific than any single integer scalar type.
-  // For example
-  // { iPTR } * { i32 }     -> { i32 }
-  // { iPTR } * { i32 i64 } -> { iPTR }
-  // and
-  // { iPTR i32 } * { i32 }          -> { i32 }
-  // { iPTR i32 } * { i32 i64 }      -> { i32 i64 }
-  // { iPTR i32 } * { i32 i64 i128 } -> { iPTR i32 }
+  std::array<MVT::SimpleValueType, 2> PtrVTs = { MVT::iFATPTR, MVT::iPTR };
+  std::array<SetType, 2> Diffs;
+  std::array<bool, 2> OutPs;
 
-  // Compute the difference between the two sets in such a way that the
-  // iPTR is in the set that is being subtracted. This is to see if there
-  // are any extra scalars in the set without iPTR that are not in the
-  // set containing iPTR. Then the iPTR could be considered a "wildcard"
-  // matching these scalars. If there is only one such scalar, it would
-  // replace the iPTR, if there are more, the iPTR would be retained.
-  SetType Diff;
-  if (InP) {
-    Diff = Out;
-    berase_if(Diff, [&In](MVT T) { return In.count(T); });
-    // Pre-remove these elements and rely only on InP/OutP to determine
-    // whether a change has been made.
-    berase_if(Out, [&Diff](MVT T) { return Diff.count(T); });
-  } else {
-    Diff = In;
-    berase_if(Diff, [&Out](MVT T) { return Out.count(T); });
-    Out.erase(MVT::iPTR);
+  for (unsigned I = 0; I < 2; ++I) {
+    MVT::SimpleValueType PtrVT = PtrVTs[I];
+    bool OutP = Out.count(PtrVT), InP = In.count(PtrVT);
+
+    OutPs[I] = OutP;
+
+    if (OutP == InP)
+      continue;
+
+    // Compute the intersection of scalars separately to account for only
+    // one set containing iPTR.
+    // The intersection of iPTR with a set of integer scalar types that does not
+    // include iPTR will result in the most specific scalar type:
+    // - iPTR is more specific than any two integer scalar elements or more.
+    // - iPTR is less specific than any single integer scalar type.
+    // For example
+    // { iPTR } * { i32 }     -> { i32 }
+    // { iPTR } * { i32 i64 } -> { iPTR }
+    // and
+    // { iPTR i32 } * { i32 }          -> { i32 }
+    // { iPTR i32 } * { i32 i64 }      -> { i32 i64 }
+    // { iPTR i32 } * { i32 i64 i128 } -> { iPTR i32 }
+    // Similarly for iFATPTR (iPTR) and iFATPTR64 (i64) etc.
+
+    // Compute the difference between the two sets in such a way that the
+    // iPTR is in the set that is being subtracted. This is to see if there
+    // are any extra scalars in the set without iPTR that are not in the
+    // set containing iPTR. Then the iPTR could be considered a "wildcard"
+    // matching these scalars. If there is only one such scalar, it would
+    // replace the iPTR, if there are more, the iPTR would be retained.
+    // Similarly for iFATPTR.
+    SetType &Diff = Diffs[I];
+    auto IsDiffPtrVT = [PtrVT](MVT T) {
+      return (PtrVT == MVT::iFATPTR) == T.isFatPointer();
+    };
+    if (InP) {
+      Diff = Out;
+      berase_if(Diff, [&In, &IsDiffPtrVT](MVT T) {
+                        return In.count(T) || !IsDiffPtrVT(T);
+                      });
+      // Pre-remove these elements and rely only on InP/OutP to determine
+      // whether a change has been made.
+      berase_if(Out, [&Diff](MVT T) { return Diff.count(T); });
+    } else {
+      Diff = In;
+      berase_if(Diff, [&Out, &IsDiffPtrVT](MVT T) {
+                        return Out.count(T) || !IsDiffPtrVT(T);
+                      });
+      Out.erase(PtrVT);
+    }
   }
 
   // The actual intersection.
-  bool Changed = berase_if(Out, Int);
-  unsigned NumD = Diff.size();
-  if (NumD == 0)
-    return Changed;
+  Changed |= berase_if(Out, Int);
 
-  if (NumD == 1) {
-    Out.insert(*Diff.begin());
-    // This is a change only if Out was the one with iPTR (which is now
-    // being replaced).
-    Changed |= OutP;
-  } else {
-    // Multiple elements from Out are now replaced with iPTR.
-    Out.insert(MVT::iPTR);
-    Changed |= !OutP;
+  for (unsigned I = 0; I < 2; ++I) {
+    MVT::SimpleValueType PtrVT = PtrVTs[I];
+    SetType &Diff = Diffs[I];
+    bool OutP = OutPs[I];
+    unsigned NumD = Diff.size();
+    if (NumD == 0)
+      continue;
+
+    if (NumD == 1) {
+      Out.insert(*Diff.begin());
+      // This is a change only if Out was the one with I(FAT)PTR (which is now
+      // being replaced).
+      Changed |= OutP;
+    } else {
+      // Multiple elements from Out are now replaced with I(FAT)PTR.
+      Out.insert(PtrVT);
+      Changed |= !OutP;
+    }
   }
+
+  LLVM_DEBUG(
+    errs() << "Result: ";
+    writeToStream(Out, errs());
+    errs() << " changed " << Changed << "\n"
+  );
+
   return Changed;
 }
 
@@ -341,6 +395,7 @@ bool TypeSetByHwMode::validate() const {
 
 bool TypeInfer::MergeInTypeInfo(TypeSetByHwMode &Out,
                                 const TypeSetByHwMode &In) {
+  LLVM_DEBUG(errs() << "MergeInTypeInfo: " << Out << " add " << In << "\n");
   ValidateOnExit _1(Out, *this);
   In.validate();
   if (In.empty() || Out == In || TP.hasError())
@@ -478,6 +533,7 @@ bool TypeInfer::EnforceSmallerThan(TypeSetByHwMode &Small,
     TypeSetByHwMode::SetType &S = Small.get(M);
     TypeSetByHwMode::SetType &B = Big.get(M);
 
+    // TODO: iFATPTR?
     if (any_of(S, isIntegerOrPtr) && any_of(S, isIntegerOrPtr)) {
       auto NotInt = [](MVT VT) { return !isIntegerOrPtr(VT); };
       Changed |= berase_if(S, NotInt);
@@ -784,17 +840,24 @@ void TypeInfer::expandOverloads(TypeSetByHwMode::SetType &Out,
 
   for (MVT Ov : Ovs) {
     switch (Ov.SimpleTy) {
-      case MVT::iPTRAny:
+      case MVT::iPTRAny: {
         Out.insert(MVT::iPTR);
+        bool IsFatPointerLegal = Legal.count(MVT::iFATPTR);
+        for (MVT T : MVT::fat_pointer_valuetypes()) {
+          if (Legal.count(T)) {
+            IsFatPointerLegal = true;
+            break;
+          }
+        }
+        if (IsFatPointerLegal)
+          Out.insert(MVT::iFATPTR);
         return;
-      case MVT::iFATPTRAny:
-        Out.insert(MVT::iFATPTR64);
-        Out.insert(MVT::iFATPTR128);
-        Out.insert(MVT::iFATPTR256);
-        Out.insert(MVT::iFATPTR512);
-        return;
+      }
       case MVT::iAny:
         for (MVT T : MVT::integer_valuetypes())
+          if (Legal.count(T))
+            Out.insert(T);
+        for (MVT T : MVT::fat_pointer_valuetypes())
           if (Legal.count(T))
             Out.insert(T);
         for (MVT T : MVT::integer_fixedlen_vector_valuetypes())
@@ -847,16 +910,10 @@ const TypeSetByHwMode &TypeInfer::getLegalTypes() {
 #ifndef NDEBUG
 TypeInfer::ValidateOnExit::~ValidateOnExit() {
   if (Infer.Validate && !VTS.validate()) {
-    dbgs() << "Type set is empty for each HW mode:\n"
-              "possible type contradiction in the pattern below "
-              "(use -print-records with llvm-tblgen to see all "
-              "expanded records).\n";
-    Infer.TP.dump();
+    Infer.TP.error("Type set is empty for each HW mode in '" +
+                       Infer.TP.getRecord()->getName() + "'");
     dbgs() << "Generated from record:\n";
     Infer.TP.getRecord()->dump();
-    PrintFatalError(Infer.TP.getRecord()->getLoc(),
-                    "Type set is empty for each HW mode in '" +
-                        Infer.TP.getRecord()->getName() + "'");
   }
 }
 #endif
@@ -1568,17 +1625,10 @@ bool SDTypeConstraint::ApplyTypeConstraint(TreePatternNode *N,
     return NodeToApply->UpdateNodeType(ResNo, VVT, TP);
   case SDTCisPtrTy: {
     // Operand must be a pointer type.
-    // If we support fat pointers, then this narrows it down to two types.
-    if (TP.getDAGPatterns().enableFatPointers()) {
-      // FIXME: We should be able to do the type inference correctly from the
-      // two types, but for now just disable this constraint on architectures
-      // with fat pointers.
-      return false;
-      ArrayRef<ValueTypeByHwMode> PtrTys({ValueTypeByHwMode(MVT::iFATPTRAny),
-                                          ValueTypeByHwMode(MVT::iPTR)});
-      return NodeToApply->UpdateNodeType(ResNo, PtrTys, TP);
-    }
-    return NodeToApply->UpdateNodeType(ResNo, MVT::iPTR, TP);
+    SmallVector<ValueTypeByHwMode, 2> PtrTys = {ValueTypeByHwMode(MVT::iPTR)};
+    if (TP.getDAGPatterns().isFatPointerLegal())
+      PtrTys.push_back(ValueTypeByHwMode(MVT::iFATPTR));
+    return NodeToApply->UpdateNodeType(ResNo, makeArrayRef(PtrTys), TP);
   }
   case SDTCisInt:
     // Require it to be one of the legal integer VTs.
@@ -1689,8 +1739,13 @@ bool TreePatternNode::UpdateNodeTypeFromInst(unsigned ResNo,
   }
 
   // PointerLikeRegClass has a type that is determined at runtime.
-  if (Operand->isSubClassOf("PointerLikeRegClass"))
-    return UpdateNodeType(ResNo, MVT::iPTR, TP);
+  if (Operand->isSubClassOf("PointerLikeRegClass")) {
+    std::array<ValueTypeByHwMode, 2> PtrTys = {
+      ValueTypeByHwMode(MVT::iFATPTR),
+      ValueTypeByHwMode(MVT::iPTR)
+    };
+    return UpdateNodeType(ResNo, makeArrayRef(PtrTys), TP);
+  }
 
   // Both RegisterClass and RegisterOperand operands derive their types from a
   // register class def.
@@ -1789,6 +1844,7 @@ MVT::SimpleValueType SDNodeInfo::getKnownType(unsigned ResNo) const {
         return Constraint.VVT.getSimple().SimpleTy;
       break;
     case SDTypeConstraint::SDTCisPtrTy:
+      // TODO: iFATPTR
       return MVT::iPTR;
     }
   }
@@ -2233,11 +2289,15 @@ static TypeSetByHwMode getImplicitType(Record *R, unsigned ResNo,
     assert(ResNo == 0 && "FIXME: ComplexPattern with multiple results?");
     if (NotRegisters)
       return TypeSetByHwMode(); // Unknown.
-    return TypeSetByHwMode(CDP.getComplexPattern(R).getValueType());
+    Record *T = CDP.getComplexPattern(R).getValueType();
+    const CodeGenHwModes &CGH = CDP.getTargetInfo().getHwModes();
+    return TypeSetByHwMode(getValueTypeByHwMode(T, CGH));
   }
   if (R->isSubClassOf("PointerLikeRegClass")) {
     assert(ResNo == 0 && "Regclass can only have one result!");
     TypeSetByHwMode VTS(MVT::iPTR);
+    if (TP.getDAGPatterns().isFatPointerLegal())
+      VTS.insert(ValueTypeByHwMode(MVT::iFATPTR));
     TP.getInfer().expandOverloads(VTS);
     return VTS;
   }
@@ -2638,6 +2698,15 @@ bool TreePatternNode::ApplyTypeConstraints(TreePattern &TP, bool NotRegisters) {
   if (getOperator()->isSubClassOf("ComplexPattern")) {
     bool MadeChange = false;
 
+    if (!NotRegisters) {
+      assert(Types.size() == 1 && "ComplexPatterns only produce one result!");
+      Record *T = CDP.getComplexPattern(getOperator()).getValueType();
+      const CodeGenHwModes &CGH = CDP.getTargetInfo().getHwModes();
+      const ValueTypeByHwMode VVT = getValueTypeByHwMode(T, CGH);
+      if (!VVT.isSimple() || VVT.getSimple() != MVT::Untyped)
+        MadeChange |= UpdateNodeType(0, VVT, TP);
+    }
+
     for (unsigned i = 0; i < getNumChildren(); ++i)
       MadeChange |= getChild(i)->ApplyTypeConstraints(TP, NotRegisters);
 
@@ -2985,7 +3054,7 @@ static bool SimplifyTree(TreePatternNodePtr &N) {
 /// patterns as possible.  Return true if all types are inferred, false
 /// otherwise.  Flags an error if a type contradiction is found.
 bool TreePattern::
-InferAllTypes(const StringMap<SmallVector<TreePatternNode*,1> > *InNamedTypes) {
+InferAllTypes(TreePattern *InPattern, TreePattern *OutPattern) {
   if (NamedNodes.empty())
     ComputeNamedNodes();
 
@@ -3001,17 +3070,18 @@ InferAllTypes(const StringMap<SmallVector<TreePatternNode*,1> > *InNamedTypes) {
     for (auto &Entry : NamedNodes) {
       SmallVectorImpl<TreePatternNode*> &Nodes = Entry.second;
 
-      // If we have input named node types, propagate their types to the named
-      // values here.
-      if (InNamedTypes) {
-        if (!InNamedTypes->count(Entry.getKey())) {
+      // If we have input pattern tree, propagate the types of its named nodes
+      // to the named values here.
+      if (InPattern) {
+        const auto &InNamedTypes = InPattern->getNamedNodesMap();
+        if (!InNamedTypes.count(Entry.getKey())) {
           error("Node '" + std::string(Entry.getKey()) +
                 "' in output pattern but not input pattern");
           return true;
         }
 
         const SmallVectorImpl<TreePatternNode*> &InNodes =
-          InNamedTypes->find(Entry.getKey())->second;
+          InNamedTypes.find(Entry.getKey())->second;
 
         // The input types should be fully resolved by now.
         for (TreePatternNode *Node : Nodes) {
@@ -3089,10 +3159,6 @@ CodeGenDAGPatterns::CodeGenDAGPatterns(RecordKeeper &R,
                                        PatternRewriterFn PatternRewriter)
     : Records(R), Target(R), LegalVTS(Target.getLegalValueTypes()),
       PatternRewriter(PatternRewriter) {
-
-  // If the target declares a class called SupportsFatPointers, then we enable
-  // support for two types of pointer.
-  FatPointers = R.getClass("SupportsFatPointers");
 
   Intrinsics = CodeGenIntrinsicTable(Records);
   ParseNodeInfo();
@@ -3995,7 +4061,8 @@ void CodeGenDAGPatterns::AddPatternToMatch(TreePattern *Pattern,
         SrcNames[Entry.first].second == 1)
       Pattern->error("Pattern has dead named input: $" + Entry.first);
 
-  PatternsToMatch.push_back(std::move(PTM));
+  if (!Pattern->hasError())
+    PatternsToMatch.push_back(std::move(PTM));
 }
 
 void CodeGenDAGPatterns::InferInstructionFlags() {
@@ -4188,6 +4255,8 @@ void CodeGenDAGPatterns::ParseOnePattern(Record *TheDef,
   if (Result.getNumTrees() != 1)
     Result.error("Cannot use multi-alternative fragments in result pattern!");
 
+  LLVM_DEBUG(errs() << "Parsing start:\n  " << Pattern << "  " << Result);
+
   // Infer types.
   bool IterateInference;
   bool InferredAllPatternTypes, InferredAllResultTypes;
@@ -4195,12 +4264,12 @@ void CodeGenDAGPatterns::ParseOnePattern(Record *TheDef,
     // Infer as many types as possible.  If we cannot infer all of them, we
     // can never do anything with this pattern: report it to the user.
     InferredAllPatternTypes =
-        Pattern.InferAllTypes(&Pattern.getNamedNodesMap());
+        Pattern.InferAllTypes(&Pattern);
 
     // Infer as many types as possible.  If we cannot infer all of them, we
     // can never do anything with this pattern: report it to the user.
     InferredAllResultTypes =
-        Result.InferAllTypes(&Pattern.getNamedNodesMap());
+        Result.InferAllTypes(&Pattern);
 
     IterateInference = false;
 
@@ -4218,6 +4287,39 @@ void CodeGenDAGPatterns::ParseOnePattern(Record *TheDef,
             i, T->getExtType(i), Result);
       }
 
+    {
+      for (auto &Entry : Pattern.getNamedNodesMap()) {
+        const SmallVectorImpl<TreePatternNode*> &Nodes = Entry.second;
+
+        const auto &OutNamedTypes = Result.getNamedNodesMap();
+        if (!OutNamedTypes.count(Entry.getKey())) continue;
+
+        const SmallVectorImpl<TreePatternNode*> &OutNodes =
+          OutNamedTypes.find(Entry.getKey())->second;
+
+        // The output types should be fully resolved by now.
+        for (TreePatternNode *Node : Nodes) {
+          // If this node is a register class, and it is the root of the pattern
+          // then we're mapping something onto an input register.  We allow
+          // changing the type of the input register in this case.  This allows
+          // us to match things like:
+          //  def : Pat<(v1i64 (bitconvert(v2i32 DPR:$src))), (v1i64 DPR:$src)>;
+          if (OutNodes[0] == Result.getTrees()[0].get() && OutNodes[0]->isLeaf()) {
+            DefInit *DI = dyn_cast<DefInit>(OutNodes[0]->getLeafValue());
+            if (DI && (DI->getDef()->isSubClassOf("RegisterClass") ||
+                       DI->getDef()->isSubClassOf("RegisterOperand")))
+              continue;
+          }
+
+          assert(Node->getNumTypes() == 1 &&
+                 OutNodes[0]->getNumTypes() == 1 &&
+                 "FIXME: cannot name multiple result nodes yet");
+          IterateInference |= Node->UpdateNodeType(0, OutNodes[0]->getExtType(0),
+                                                   Pattern);
+        }
+      }
+    }
+
     // If our iteration has converged and the input pattern's types are fully
     // resolved but the result pattern is not fully resolved, we may have a
     // situation where we have two instructions in the result pattern and
@@ -4231,6 +4333,8 @@ void CodeGenDAGPatterns::ParseOnePattern(Record *TheDef,
         !InferredAllResultTypes)
       IterateInference =
           ForceArbitraryInstResultType(Result.getTree(0).get(), Result);
+
+    LLVM_DEBUG(errs() << "Parsing loop:\n  " << Pattern << "  " << Result);
   } while (IterateInference);
 
   // Verify that we inferred enough types that we can do something with the

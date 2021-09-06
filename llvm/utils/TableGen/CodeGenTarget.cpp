@@ -229,11 +229,11 @@ StringRef llvm::getEnumName(MVT::SimpleValueType T) {
   case MVT::iFATPTR128:return "MVT::iFATPTR128";
   case MVT::iFATPTR256:return "MVT::iFATPTR256";
   case MVT::iFATPTR512:return "MVT::iFATPTR512";
-  case MVT::iFATPTRAny:return "MVT::iFATPTRAny";
+  case MVT::iFATPTR:   return "MVT::iFATPTR";
   case MVT::Untyped:   return "MVT::Untyped";
   case MVT::funcref:   return "MVT::funcref";
   case MVT::externref: return "MVT::externref";
-  default: llvm_unreachable("ILLEGAL VALUE TYPE!");
+  default: dbgs() << "VT: " << (unsigned)T << "\n", llvm_unreachable("ILLEGAL VALUE TYPE!");
   }
 }
 
@@ -566,7 +566,7 @@ bool CodeGenTarget::guessInstructionProperties() const {
 // ComplexPattern implementation
 //
 ComplexPattern::ComplexPattern(Record *R) {
-  Ty          = ::getValueType(R->getValueAsDef("Ty"));
+  Ty          = R->getValueAsDef("Ty");
   NumOperands = R->getValueAsInt("NumOperands");
   SelectFunc = std::string(R->getValueAsString("SelectFunc"));
   RootNodes   = R->getValueAsListOfDefs("RootNodes");
@@ -722,11 +722,7 @@ CodeGenIntrinsic::CodeGenIntrinsic(Record *R,
         continue;
 
       MVT::SimpleValueType VT = getValueType(TyEl->getValueAsDef("VT"));
-      // iFATPTRAny is overloaded from the perspective of the back end (it
-      // becomes one of the fixed-sized iFATPTR types), but it is not overloaded
-      // from the perspective of the IR, where it is (currently, at least) always
-      // an address-space-200 pointer.
-      if (MVT(VT).isOverloaded() && (MVT(VT) != MVT::iFATPTRAny)) {
+      if (MVT(VT).isOverloaded()) {
         OverloadedVTs.push_back(VT);
         isOverloaded = true;
       }

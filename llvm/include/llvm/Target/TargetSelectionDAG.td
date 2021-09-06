@@ -27,6 +27,8 @@ class SDTCisVT<int OpNum, ValueType vt> : SDTypeConstraint<OpNum> {
   ValueType VT = vt;
 }
 
+// SDTCisPtrTy - The specified operand has iPTR or iFATPTR type. Combine with
+// SDTCisInt to get only iPTR as an address/offset.
 class SDTCisPtrTy<int OpNum> : SDTypeConstraint<OpNum>;
 
 // SDTCisInt - The specified operand has integer type.
@@ -109,7 +111,9 @@ def SDTOther  : SDTypeProfile<1, 0, [SDTCisVT<0, OtherVT>]>; // for 'vt'.
 def SDTUNDEF  : SDTypeProfile<1, 0, []>;                     // for 'undef'.
 def SDTUnaryOp  : SDTypeProfile<1, 1, []>;                   // for bitconvert.
 
-def SDTFatPtrAddOp : SDTypeProfile<1, 2, []>;
+def SDTPtrAddOp : SDTypeProfile<1, 2, [
+  SDTCisSameAs<0, 1>, SDTCisPtrTy<0>, SDTCisPtrTy<2>, SDTCisInt<2>
+]>;
 
 def SDTIntBinOp : SDTypeProfile<1, 2, [     // add, and, or, xor, udiv, etc.
   SDTCisSameAs<0, 1>, SDTCisSameAs<0, 2>, SDTCisInt<0>
@@ -228,16 +232,17 @@ def SDTStore : SDTypeProfile<0, 2, [        // store
 ]>;
 
 def SDTIStore : SDTypeProfile<1, 3, [       // indexed store
-  SDTCisSameAs<0, 2>, SDTCisPtrTy<0>, SDTCisPtrTy<3>
+  SDTCisSameAs<0, 2>, SDTCisPtrTy<0>, SDTCisPtrTy<3>, SDTCisInt<3>
 ]>;
 
 def SDTMaskedStore: SDTypeProfile<0, 4, [       // masked store
-  SDTCisVec<0>, SDTCisPtrTy<1>, SDTCisPtrTy<2>, SDTCisVec<3>, SDTCisSameNumEltsAs<0, 3>
+  SDTCisVec<0>, SDTCisPtrTy<1>, SDTCisPtrTy<2>, SDTCisInt<2>,
+  SDTCisVec<3>, SDTCisSameNumEltsAs<0, 3>
 ]>;
 
 def SDTMaskedLoad: SDTypeProfile<1, 4, [       // masked load
-  SDTCisVec<0>, SDTCisPtrTy<1>, SDTCisPtrTy<2>, SDTCisVec<3>, SDTCisSameAs<0, 4>,
-  SDTCisSameNumEltsAs<0, 3>
+  SDTCisVec<0>, SDTCisPtrTy<1>, SDTCisPtrTy<2>, SDTCisInt<2>,
+  SDTCisVec<3>, SDTCisSameAs<0, 4>, SDTCisSameNumEltsAs<0, 3>
 ]>;
 
 def SDTVecShuffle : SDTypeProfile<1, 2, [
@@ -247,10 +252,10 @@ def SDTVecSlice : SDTypeProfile<1, 3, [     // vector splice
   SDTCisSameAs<0, 1>, SDTCisSameAs<1, 2>, SDTCisInt<3>
 ]>;
 def SDTVecExtract : SDTypeProfile<1, 2, [   // vector extract
-  SDTCisEltOfVec<0, 1>, SDTCisPtrTy<2>
+  SDTCisEltOfVec<0, 1>, SDTCisPtrTy<2>, SDTCisInt<2>
 ]>;
 def SDTVecInsert : SDTypeProfile<1, 3, [    // vector insert
-  SDTCisEltOfVec<2, 1>, SDTCisSameAs<0, 1>, SDTCisPtrTy<3>
+  SDTCisEltOfVec<2, 1>, SDTCisSameAs<0, 1>, SDTCisPtrTy<3>, SDTCisInt<3>
 ]>;
 def SDTVecReduce : SDTypeProfile<1, 1, [    // vector reduction
   SDTCisInt<0>, SDTCisVec<1>
@@ -279,7 +284,7 @@ def SDTMemBarrier : SDTypeProfile<0, 5, [   // memory barrier
   SDTCisInt<0>
 ]>;
 def SDTAtomicFence : SDTypeProfile<0, 2, [
-  SDTCisSameAs<0,1>, SDTCisPtrTy<0>
+  SDTCisSameAs<0,1>, SDTCisPtrTy<0>, SDTCisInt<0>
 ]>;
 def SDTAtomic3 : SDTypeProfile<1, 3, [
   SDTCisSameAs<0,2>,  SDTCisSameAs<0,3>, SDTCisInt<0>, SDTCisPtrTy<1>
@@ -457,7 +462,7 @@ def trunc      : SDNode<"ISD::TRUNCATE"   , SDTIntTruncOp>;
 def bitconvert : SDNode<"ISD::BITCAST"    , SDTUnaryOp>;
 def inttoptr   : SDNode<"ISD::INTTOPTR"   , SDTUnaryOp>;
 def ptrtoint   : SDNode<"ISD::PTRTOINT"   , SDTUnaryOp>;
-def ptradd     : SDNode<"ISD::PTRADD"     , SDTFatPtrAddOp>;
+def ptradd     : SDNode<"ISD::PTRADD"     , SDTPtrAddOp>;
 def addrspacecast : SDNode<"ISD::ADDRSPACECAST", SDTUnaryOp>;
 def extractelt : SDNode<"ISD::EXTRACT_VECTOR_ELT", SDTVecExtract>;
 def insertelt  : SDNode<"ISD::INSERT_VECTOR_ELT", SDTVecInsert>;
@@ -699,9 +704,9 @@ def scalar_to_vector : SDNode<"ISD::SCALAR_TO_VECTOR", SDTypeProfile<1, 1, []>,
 // vector_extract/vector_insert are deprecated. extractelt/insertelt
 // are preferred.
 def vector_extract : SDNode<"ISD::EXTRACT_VECTOR_ELT",
-    SDTypeProfile<1, 2, [SDTCisPtrTy<2>]>, []>;
+    SDTypeProfile<1, 2, [SDTCisPtrTy<2>, SDTCisInt<2>]>, []>;
 def vector_insert : SDNode<"ISD::INSERT_VECTOR_ELT",
-    SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>, SDTCisPtrTy<3>]>, []>;
+    SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>, SDTCisPtrTy<3>, SDTCisInt<3>]>, []>;
 def concat_vectors : SDNode<"ISD::CONCAT_VECTORS",
     SDTypeProfile<1, 2, [SDTCisSubVecOfVec<1, 0>, SDTCisSameAs<1, 2>]>,[]>;
 
@@ -718,13 +723,13 @@ def insert_subvector : SDNode<"ISD::INSERT_SUBVECTOR", SDTSubVecInsert, []>;
 // Nodes for intrinsics, you should use the intrinsic itself and let tblgen use
 // these internally.  Don't reference these directly.
 def intrinsic_void : SDNode<"ISD::INTRINSIC_VOID",
-                            SDTypeProfile<0, -1, [SDTCisPtrTy<0>]>,
+                            SDTypeProfile<0, -1, [SDTCisPtrTy<0>, SDTCisInt<0>]>,
                             [SDNPHasChain]>;
 def intrinsic_w_chain : SDNode<"ISD::INTRINSIC_W_CHAIN",
-                               SDTypeProfile<1, -1, [SDTCisPtrTy<1>]>,
+                               SDTypeProfile<1, -1, [SDTCisPtrTy<1>, SDTCisInt<1>]>,
                                [SDNPHasChain]>;
 def intrinsic_wo_chain : SDNode<"ISD::INTRINSIC_WO_CHAIN",
-                                SDTypeProfile<1, -1, [SDTCisPtrTy<1>]>, []>;
+                                SDTypeProfile<1, -1, [SDTCisPtrTy<1>, SDTCisInt<1>]>, []>;
 
 def SDT_assert : SDTypeProfile<1, 1,
   [SDTCisInt<0>, SDTCisInt<1>, SDTCisSameAs<1, 0>]>;
@@ -1647,7 +1652,8 @@ def atomic_load_64 :
   let MemoryVT = i64;
 }
 
-// We can't use let MemoryVT = iFATPTRAny here since by the time it runs we
+// XXX: Still true?..
+// We can't use let MemoryVT = iFATPTR here since by the time it runs we
 // have turned it into an iFATPTR128, etc -> use the C++ predicate below. We
 // also can't set IsAtomic, since that requires MemoryVT, but that only
 // influences the auto-generated code predicate, and ours should suffice.

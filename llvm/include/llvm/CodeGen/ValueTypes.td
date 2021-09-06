@@ -202,13 +202,16 @@ def iFATPTR64 : ValueType<64,   166>;  // 64-bit fat pointer.
 def iFATPTR128: ValueType<128,  167>;  // 128-bit fat pointer.
 def iFATPTR256: ValueType<256,  168>;  // 256-bit fat pointer.
 def iFATPTR512: ValueType<512,  169>;  // 512-bit fat pointer.
-def iFATPTRAny: ValueType<0,    170>;  // Any fat pointer.
+
+// Pseudo valuetype mapped to the current fat pointer size.
+def iFATPTR    : ValueType<0, 247>;
 
 def token      : ValueType<0, 248>;  // TokenTy
 def MetadataVT : ValueType<0, 249>;  // Metadata
 
-// Pseudo valuetype mapped to the current pointer size to any address space.
-// Should only be used in TableGen.
+// Pseudo valuetype mapped to the current pointer size or fat pointer size (no
+// more than one of each supported, together they must cover any address
+// space). Should only be used in TableGen.
 def iPTRAny    : ValueType<0, 250>;
 
 // Pseudo valuetype to represent "vector of any size"

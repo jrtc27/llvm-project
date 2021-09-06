@@ -215,6 +215,8 @@ struct TypeSetByHwMode : public InfoByHwMode<MachineValueTypeSet> {
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   MVT getMachineValueType() const {
+    if (!isMachineValueType())
+      dump();
     assert(isMachineValueType());
     return *Map.begin()->second.begin();
   }
@@ -953,8 +955,8 @@ public:
   /// InferAllTypes - Infer/propagate as many types throughout the expression
   /// patterns as possible.  Return true if all types are inferred, false
   /// otherwise.  Bail out if a type contradiction is found.
-  bool InferAllTypes(
-      const StringMap<SmallVector<TreePatternNode *, 1>> *NamedTypes = nullptr);
+  bool InferAllTypes(TreePattern *InPattern = nullptr,
+                     TreePattern *OutPattern = nullptr);
 
   /// error - If this is the first error in the current resolution step,
   /// print it and set the error flag.  Otherwise, continue silently.
@@ -1163,9 +1165,6 @@ class CodeGenDAGPatterns {
   /// emit.
   std::vector<PatternToMatch> PatternsToMatch;
 
-  /// Flag indicating whether fat pointers should be supported.
-  bool FatPointers;
-
   TypeSetByHwMode LegalVTS;
 
   using PatternRewriterFn = std::function<void (TreePattern *)>;
@@ -1180,8 +1179,15 @@ public:
   CodeGenTarget &getTargetInfo() { return Target; }
   const CodeGenTarget &getTargetInfo() const { return Target; }
   const TypeSetByHwMode &getLegalTypes() const { return LegalVTS; }
-
-  bool enableFatPointers() { return FatPointers; }
+  bool isFatPointerLegal() const {
+    const TypeSetByHwMode &Legal = getLegalTypes();
+    const CodeGenHwModes &CGH = getTargetInfo().getHwModes();
+    for (MVT T : MVT::fat_pointer_valuetypes())
+      for (unsigned M = 1, NumModes = CGH.getNumModeIds(); M < NumModes; ++M)
+        if (Legal.get(M).count(T))
+          return true;
+    return false;
+  }
 
   Record *getSDNodeNamed(StringRef Name) const;
 
